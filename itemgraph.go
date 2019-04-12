@@ -134,6 +134,7 @@ type ItemClass int
 // Various classes of items.
 const (
 	ClassUnknown ItemClass = iota
+	ClassEvent
 	ClassImage
 	ClassVideo
 	ClassAudio

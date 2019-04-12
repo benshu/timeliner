@@ -17,6 +17,7 @@ import (
 
 	// plug in data sources
 	_ "github.com/mholt/timeliner/datasources/facebook"
+	_ "github.com/mholt/timeliner/datasources/googlecalendar"
 	_ "github.com/mholt/timeliner/datasources/googlelocation"
 	_ "github.com/mholt/timeliner/datasources/googlephotos"
 	_ "github.com/mholt/timeliner/datasources/instagram"
