@@ -3,10 +3,7 @@ package googlecalendar
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
-	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/mholt/timeliner"
@@ -244,7 +241,13 @@ func (m eventItem) ID() string {
 }
 
 func (m eventItem) Timestamp() time.Time {
-	return m.EventMetadata.CreationTime
+	fmt.Println(m.EventMetadata.Created)
+	created_time, err := time.Parse("", m.EventMetadata.Created)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return created_time
 }
 
 func (m eventItem) DataText() (*string, error) {
@@ -252,59 +255,7 @@ func (m eventItem) DataText() (*string, error) {
 }
 
 func (m eventItem) DataFileName() *string {
-	return &m.Filename
-}
-
-func (m eventItem) DataFileReader() (io.ReadCloser, error) {
-	if m.EventMetadata.Video != nil && m.EventMetadata.Video.Status != "READY" {
-		log.Printf("[INFO] Skipping video file because it is not ready (status=%s filename=%s)",
-			m.EventMetadata.Video.Status, m.Filename)
-		return nil, nil
-	}
-
-	u := m.BaseURL
-
-	// configure for the download of full file with almost-full exif data; see
-	// https://developers.google.com/photos/library/guides/access-event-items#base-urls
-	if m.EventMetadata.Photo != nil {
-		u += "=d"
-	} else if m.EventMetadata.Video != nil {
-		u += "=dv"
-	}
-
-	const maxTries = 5
-	var err error
-	var resp *http.Response
-	for i := 0; i < maxTries; i++ {
-		resp, err = http.Get(u)
-		if err != nil {
-			err = fmt.Errorf("getting event contents: %v", err)
-			log.Printf("[ERROR][%s] %s: %v - retrying... (attempt %d/%d)", DataSourceID, u, err, i+1, maxTries)
-			time.Sleep(30 * time.Second)
-			continue
-		}
-		if resp.StatusCode != http.StatusOK {
-			bodyText, err2 := ioutil.ReadAll(io.LimitReader(resp.Body, 1024*256))
-			resp.Body.Close()
-
-			if err2 == nil {
-				err = fmt.Errorf("HTTP %d: %s: >>> %s <<<", resp.StatusCode, resp.Status, bodyText)
-			} else {
-				err = fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
-			}
-
-			log.Printf("[ERROR][%s] %s: Bad response: %v - waiting and retrying... (attempt %d/%d)",
-				DataSourceID, u, err, i+1, maxTries)
-			time.Sleep(15 * time.Second)
-			continue
-		}
-		break
-	}
-
-	if resp == nil {
-		return nil, err
-	}
-	return resp.Body, err
+	return nil
 }
 
 func (m eventItem) DataFileHash() []byte {
@@ -312,17 +263,18 @@ func (m eventItem) DataFileHash() []byte {
 }
 
 func (m eventItem) DataFileMIMEType() *string {
-	return &m.MIMEType
+	return nil
+}
+
+func (m eventItem) DataFileReader() (io.ReadCloser, error) {
+	return nil, nil
 }
 
 func (m eventItem) Owner() (*string, *string) {
 	// since we only download event owned by the account,
 	// we can leave ID nil and assume the display name
 	// is the account owner's name
-	if m.ContributorInfo.DisplayName != "" {
-		return nil, &m.ContributorInfo.DisplayName
-	}
-	return nil, nil
+	return nil, &m.EventMetadata.Organizer.DisplayName
 }
 
 func (m eventItem) Class() timeliner.ItemClass {
@@ -330,40 +282,12 @@ func (m eventItem) Class() timeliner.ItemClass {
 }
 
 func (m eventItem) Metadata() (*timeliner.Metadata, error) {
-	widthInt, err := strconv.Atoi("0")
-	if err != nil {
-		return nil, fmt.Errorf("parsing width as int: %v (width=%s)",
-			err, "0")
-	}
-	heightInt, err := strconv.Atoi(m.EventMetadata.Height)
-	if err != nil {
-		return nil, fmt.Errorf("parsing height as int: %v (height=%s)",
-			err, m.EventMetadata.Height)
-	}
-
 	meta := &timeliner.Metadata{
-		Width:  widthInt,
-		Height: heightInt,
-	}
-
-	if m.EventMetadata.Photo != nil {
-		meta.CameraMake = m.EventMetadata.Photo.CameraMake
-		meta.CameraModel = m.EventMetadata.Photo.CameraModel
-		meta.FocalLength = m.EventMetadata.Photo.FocalLength
-		meta.ApertureFNumber = m.EventMetadata.Photo.ApertureFNumber
-		meta.ISOEquivalent = m.EventMetadata.Photo.ISOEquivalent
-		if m.EventMetadata.Photo.ExposureTime != "" {
-			expDur, err := time.ParseDuration(m.EventMetadata.Photo.ExposureTime)
-			if err != nil {
-				return nil, fmt.Errorf("parsing exposure time as duration: %v (exposure_time=%s)",
-					err, m.EventMetadata.Photo.ExposureTime)
-			}
-			meta.ExposureTime = expDur
-		}
-	} else if m.EventMetadata.Video != nil {
-		meta.CameraMake = m.EventMetadata.Video.CameraMake
-		meta.CameraModel = m.EventMetadata.Video.CameraModel
-		meta.FPS = m.EventMetadata.Video.FPS
+		// Attendees:   m.EventMetadata.Attendees,
+		// Creator:     m.EventMetadata.Creator,
+		Description: m.EventMetadata.Description,
+		// HtmlLInk:    m.EventMetadata.HtmlLInk,
+		// Kind:        m.EventMetadata.Kind,
 	}
 
 	return meta, nil
@@ -371,5 +295,14 @@ func (m eventItem) Metadata() (*timeliner.Metadata, error) {
 
 func (m eventItem) Location() (*timeliner.Location, error) {
 	// See https://issuetracker.google.com/issues/80379228 😭
-	return nil, nil
+	location_free_form_text := m.EventMetadata.Location
+	fmt.Println(location_free_form_text)
+	latitude := float64(30000)
+	longitude := float64(30000)
+	location := timeliner.Location{
+		Latitude:  &latitude,
+		Longitude: &longitude,
+	}
+
+	return &location, nil
 }
